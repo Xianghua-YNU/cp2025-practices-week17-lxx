@@ -1,10 +1,9 @@
 """
-学生模板：波动方程FTCS解
-文件：wave_equation_ftcs_student.py
-重要：函数名称必须与参考答案一致！
+波动方程FTCS解
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def u_t(x, C=1, d=0.1, sigma=0.3, L=1):
     """
@@ -19,8 +18,7 @@ def u_t(x, C=1, d=0.1, sigma=0.3, L=1):
     返回:
         np.ndarray: 初始速度剖面。
     """
-    # TODO: 实现初始速度剖面函数
-    raise NotImplementedError(f"请在 {__file__} 中实现此函数")
+    return C * x * (L - x) / L**2 * np.exp(-(x - d)**2 / (2 * sigma**2))
 
 def solve_wave_equation_ftcs(parameters):
     """
@@ -41,31 +39,45 @@ def solve_wave_equation_ftcs(parameters):
             - np.ndarray: 解数组 u(x, t)。
             - np.ndarray: 空间数组 x。
             - np.ndarray: 时间数组 t。
-    
-    物理背景: 描述弦振动的波动方程，初始条件为弦静止，给定初始速度剖面。
-    数值方法: 使用有限差分法中的FTCS (Forward-Time Central-Space) 方案。
-    
-    实现步骤:
-    1. 从 parameters 字典中获取所有必要的物理和数值参数。
-    2. 初始化空间网格 x 和时间网格 t。
-    3. 创建一个零数组 u 来存储解，其维度为 (x.size, t.size)。
-    4. 计算稳定性条件 c = (a * dt / dx)^2。如果 c >= 1，打印警告信息。
-    5. 应用初始条件：u(x, 0) = 0。
-    6. 计算第一个时间步 u(x, 1) 的值，使用初始速度 u_t(x, 0) 和给定的公式。
-    7. 使用FTCS方案迭代计算后续时间步的解。
-    8. 返回解数组 u、空间数组 x 和时间数组 t。
     """
-    # TODO: 验证输入参数
-    # TODO: 初始化变量
-    # TODO: 计算稳定性条件
-    # TODO: 应用初始条件
-    # TODO: 实现FTCS主算法
-    # TODO: 返回结果
-    raise NotImplementedError(f"请在 {__file__} 中实现此函数")
-
+    # 从参数字典中获取参数
+    a = parameters['a']
+    L = parameters['L']
+    dx = parameters['dx']
+    dt = parameters['dt']
+    total_time = parameters['total_time']
+    
+    # 计算空间和时间网格
+    x = np.arange(0, L + dx, dx)
+    t = np.arange(0, total_time + dt, dt)
+    
+    # 初始化解数组
+    u = np.zeros((len(x), len(t)))
+    
+    # 计算稳定性条件
+    c = (a * dt / dx)**2
+    if c >= 1:
+        print(f"Warning: Stability condition violated (c = {c:.4f} >= 1)")
+    
+    # 应用初始条件 u(x,0) = 0 (已经由np.zeros初始化)
+    
+    # 计算第一个时间步 u(x,1)
+    u[:, 1] = u_t(x, C=parameters['C'], d=parameters['d'], 
+                 sigma=parameters['sigma'], L=parameters['L']) * dt
+    
+    # FTCS主算法
+    for j in range(1, len(t)-1):
+        for i in range(1, len(x)-1):
+            u[i, j+1] = c * (u[i+1, j] + u[i-1, j]) + 2*(1 - c)*u[i, j] - u[i, j-1]
+        
+        # 应用边界条件
+        u[0, j+1] = 0
+        u[-1, j+1] = 0
+    
+    return u, x, t
 
 if __name__ == "__main__":
-    # Demonstration and testing
+    # 演示和测试
     params = {
         'a': 100,
         'L': 1,
@@ -78,6 +90,7 @@ if __name__ == "__main__":
     }
     u_sol, x_sol, t_sol = solve_wave_equation_ftcs(params)
 
+    # 创建动画
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111, xlim=(0, params['L']), ylim=(u_sol.min() * 1.1, u_sol.max() * 1.1))
     line, = ax.plot([], [], 'g-', lw=2)
@@ -89,5 +102,10 @@ if __name__ == "__main__":
         line.set_data(x_sol, u_sol[:, frame])
         return line,
 
-    ani = FuncAnimation(fig, update, frames=t_sol.size, interval=1, blit=True)
+    # 创建动画，每帧间隔50毫秒
+    ani = FuncAnimation(fig, update, frames=len(t_sol), interval=50, blit=True)
+    
+    # 保存动画为GIF（可选）
+    # ani.save('wave_animation.gif', writer='pillow', fps=30)
+    
     plt.show()
