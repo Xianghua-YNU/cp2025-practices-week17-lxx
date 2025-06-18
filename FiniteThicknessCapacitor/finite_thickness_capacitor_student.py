@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Module: Finite Thickness Parallel Plate Capacitor (Student Version)
+Module: Finite Thickness Parallel Plate Capacitor (Improved Version)
 """
 
 import numpy as np
@@ -23,22 +23,31 @@ def solve_laplace_sor(nx, ny, plate_thickness, plate_separation, omega=1.9, max_
     Returns:
         np.ndarray: 2D electric potential distribution
     """
+    # Input validation
+    if not (isinstance(nx, int) and isinstance(ny, int) and nx > 0 and ny > 0):
+        raise ValueError("nx and ny must be positive integers")
+    if not (1.0 < omega < 2.0):
+        raise ValueError("Relaxation factor omega must be between 1.0 and 2.0")
+    
     # Initialize potential grid
     potential = np.zeros((ny, nx))
     
-    # Calculate plate positions
+    # Calculate plate positions (ensure they fit within grid)
+    plate_thickness = min(plate_thickness, ny//4)
+    plate_separation = min(plate_separation, ny//2)
+    
     lower_plate_start = (ny - plate_separation - 2 * plate_thickness) // 2
     lower_plate_end = lower_plate_start + plate_thickness
     upper_plate_start = lower_plate_end + plate_separation
     upper_plate_end = upper_plate_start + plate_thickness
     
-    # Set boundary conditions
+    # Set boundary conditions with exact values
     potential[:, 0] = 0.0    # Left boundary (ground)
     potential[:, -1] = 0.0   # Right boundary (ground)
     potential[0, :] = 0.0    # Top boundary (ground)
     potential[-1, :] = 0.0   # Bottom boundary (ground)
     
-    # Set plate potentials
+    # Set plate potentials with exact values
     potential[lower_plate_start:lower_plate_end, :] = -100.0  # Lower plate
     potential[upper_plate_start:upper_plate_end, :] = 100.0   # Upper plate
     
@@ -51,8 +60,8 @@ def solve_laplace_sor(nx, ny, plate_thickness, plate_separation, omega=1.9, max_
     fixed_mask[lower_plate_start:lower_plate_end, :] = True
     fixed_mask[upper_plate_start:upper_plate_end, :] = True
     
-    # SOR iteration
-    for _ in range(max_iter):
+    # SOR iteration with convergence tracking
+    for iteration in range(max_iter):
         max_diff = 0.0
         for i in range(1, ny-1):
             for j in range(1, nx-1):
@@ -83,10 +92,20 @@ def calculate_charge_density(potential_grid, dx, dy):
     Returns:
         np.ndarray: 2D charge density distribution
     """
-    # Calculate Laplacian using finite differences
-    laplacian = np.zeros_like(potential_grid)
+    # Input validation
+    if potential_grid.ndim != 2:
+        raise ValueError("Potential grid must be 2D array")
+    if dx <= 0 or dy <= 0:
+        raise ValueError("Grid spacing must be positive")
     
-    # Central difference scheme
+    # Initialize charge density array
+    charge_density = np.zeros_like(potential_grid)
+    
+    # Calculate Laplacian using finite differences with proper boundary handling
+    ny, nx = potential_grid.shape
+    
+    # Inner points (central difference)
+    laplacian = np.zeros_like(potential_grid)
     laplacian[1:-1, 1:-1] = (
         (potential_grid[1:-1, 2:] - 2*potential_grid[1:-1, 1:-1] + potential_grid[1:-1, :-2]) / dx**2 +
         (potential_grid[2:, 1:-1] - 2*potential_grid[1:-1, 1:-1] + potential_grid[:-2, 1:-1]) / dy**2
@@ -94,6 +113,12 @@ def calculate_charge_density(potential_grid, dx, dy):
     
     # Apply Poisson equation
     charge_density = -laplacian / (4 * np.pi)
+    
+    # Set charge density to zero at boundaries (no charge on grounded walls)
+    charge_density[:, 0] = 0.0
+    charge_density[:, -1] = 0.0
+    charge_density[0, :] = 0.0
+    charge_density[-1, :] = 0.0
     
     return charge_density
 
@@ -107,13 +132,18 @@ def plot_results(potential, charge_density, x_coords, y_coords):
         x_coords (np.ndarray): X coordinate array
         y_coords (np.ndarray): Y coordinate array
     """
+    # Input validation
+    if potential.shape != charge_density.shape:
+        raise ValueError("Potential and charge density arrays must have same shape")
+    
     # Create figure
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(14, 6))
     
     # Plot potential distribution
     plt.subplot(1, 2, 1)
     X, Y = np.meshgrid(x_coords, y_coords)
-    contour = plt.contourf(X, Y, potential, levels=20, cmap='viridis')
+    levels = np.linspace(-100, 100, 21)
+    contour = plt.contourf(X, Y, potential, levels=levels, cmap='RdBu')
     plt.colorbar(contour, label='Electric Potential (V)')
     plt.title('Electric Potential Distribution')
     plt.xlabel('x (m)')
@@ -121,7 +151,10 @@ def plot_results(potential, charge_density, x_coords, y_coords):
     
     # Plot charge density distribution
     plt.subplot(1, 2, 2)
-    charge_contour = plt.contourf(X, Y, charge_density, levels=20, cmap='RdBu')
+    # Use symmetric color scale for charge density
+    max_charge = np.max(np.abs(charge_density))
+    levels = np.linspace(-max_charge, max_charge, 21)
+    charge_contour = plt.contourf(X, Y, charge_density, levels=levels, cmap='RdBu')
     plt.colorbar(charge_contour, label='Charge Density (C/m^2)')
     plt.title('Charge Density Distribution')
     plt.xlabel('x (m)')
