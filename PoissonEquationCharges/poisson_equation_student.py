@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-学生答案：求解正负电荷构成的泊松方程
-严格按参考答案实现
+
 """
 
 import numpy as np
@@ -10,159 +9,139 @@ from typing import Tuple
 
 def solve_poisson_equation(M: int = 100, target: float = 1e-6, max_iterations: int = 10000) -> Tuple[np.ndarray, int, bool]:
     """
-    使用松弛迭代法求解二维泊松方程
+    Solve 2D Poisson equation using relaxation method.
     
-    参数:
-        M (int): 每边的网格点数，默认100
-        target (float): 收敛精度，默认1e-6
-        max_iterations (int): 最大迭代次数，默认10000
+    Args:
+        M (int): Number of grid points per side
+        target (float): Convergence tolerance
+        max_iterations (int): Maximum number of iterations
     
-    返回:
+    Returns:
         tuple: (phi, iterations, converged)
-            phi (np.ndarray): 电势分布数组，形状为(M+1, M+1)
-            iterations (int): 实际迭代次数
-            converged (bool): 是否收敛
-    
-    实现说明:
-        1. 严格按参考答案实现电荷区域定义
-        2. 使用正确的迭代公式
-        3. 确保边界条件处理正确
+            phi (np.ndarray): Electric potential distribution
+            iterations (int): Number of iterations performed
+            converged (bool): Whether solution converged
     """
-    # 网格间距
+    # Grid spacing
     h = 1.0
     
-    # 初始化电势数组
+    # Initialize potential array with boundary conditions
     phi = np.zeros((M+1, M+1), dtype=float)
+    phi_prev = np.copy(phi)
     
-    # 创建电荷密度数组
+    # Set up charge density distribution
     rho = np.zeros((M+1, M+1), dtype=float)
     
-    # 设置电荷分布（严格按参考答案坐标）
-    # 正电荷区域 (60:80, 20:40)
-    pos_y1, pos_y2 = 60, 80
-    pos_x1, pos_x2 = 20, 40
-    # 负电荷区域 (20:40, 60:80)
-    neg_y1, neg_y2 = 20, 40
-    neg_x1, neg_x2 = 60, 80
+    # Scale charge positions based on grid size
+    # For M=100: pos (60:80, 20:40), neg (20:40, 60:80)
+    pos_y1, pos_y2 = int(0.6*M), int(0.8*M)
+    pos_x1, pos_x2 = int(0.2*M), int(0.4*M)
+    neg_y1, neg_y2 = int(0.2*M), int(0.4*M)
+    neg_x1, neg_x2 = int(0.6*M), int(0.8*M)
     
-    # 调整区域坐标不超过网格范围
-    pos_y1 = min(pos_y1, M)
-    pos_y2 = min(pos_y2, M)
-    pos_x1 = min(pos_x1, M)
-    pos_x2 = min(pos_x2, M)
-    neg_y1 = min(neg_y1, M)
-    neg_y2 = min(neg_y2, M)
-    neg_x1 = min(neg_x1, M)
-    neg_x2 = min(neg_x2, M)
+    rho[pos_y1:pos_y2, pos_x1:pos_x2] = 1.0   # Positive charge
+    rho[neg_y1:neg_y2, neg_x1:neg_x2] = -1.0  # Negative charge
     
-    rho[pos_y1:pos_y2, pos_x1:pos_x2] = 1.0   # 正电荷
-    rho[neg_y1:neg_y2, neg_x1:neg_x2] = -1.0  # 负电荷
-    
-    # 迭代变量
+    # Relaxation iteration
     delta = 1.0
     iterations = 0
     converged = False
     
-    # 主迭代循环
     while delta > target and iterations < max_iterations:
-        phi_prev = np.copy(phi)
+        # Update interior points using finite difference formula
+        phi[1:-1, 1:-1] = 0.25 * (phi[0:-2, 1:-1] + phi[2:, 1:-1] + 
+                                   phi[1:-1, :-2] + phi[1:-1, 2:] + 
+                                   h*h * rho[1:-1, 1:-1])
         
-        # 使用有限差分公式更新内部网格点
-        phi[1:-1, 1:-1] = 0.25 * (phi_prev[2:, 1:-1] + phi_prev[:-2, 1:-1] + 
-                                 phi_prev[1:-1, 2:] + phi_prev[1:-1, :-2] + 
-                                 h*h * rho[1:-1, 1:-1])
-        
-        # 计算最大变化量
+        # Calculate maximum change for convergence check
         delta = np.max(np.abs(phi - phi_prev))
+        
+        # Update previous solution
+        phi_prev = np.copy(phi)
         iterations += 1
     
-    converged = delta <= target
+    converged = bool(delta <= target)
+    
     return phi, iterations, converged
 
 def visualize_solution(phi: np.ndarray, M: int = 100) -> None:
     """
-    可视化电势分布
+    Visualize the electric potential distribution.
     
-    参数:
-        phi (np.ndarray): 电势分布数组
-        M (int): 网格大小
-    
-    实现说明:
-        1. 严格按参考答案实现可视化
-        2. 使用正确的电荷区域标注
+    Args:
+        phi (np.ndarray): Electric potential array
+        M (int): Grid size
     """
     plt.figure(figsize=(10, 8))
     
-    # 绘制电势分布
+    # Create potential plot
     im = plt.imshow(phi, extent=[0, M, 0, M], origin='lower', 
-                   cmap='RdBu_r', interpolation='bilinear')
+                    cmap='RdBu_r', interpolation='bilinear')
     
-    # 添加颜色条
+    # Add colorbar
     cbar = plt.colorbar(im)
     cbar.set_label('Electric Potential (V)', fontsize=12)
     
-    # 标注电荷位置（严格按参考答案坐标）
-    plt.fill_between([20, 40], [60, 60], [80, 80], 
-                    alpha=0.3, color='red', label='Positive Charge')
-    plt.fill_between([60, 80], [20, 20], [40, 40], 
-                    alpha=0.3, color='blue', label='Negative Charge')
+    # Mark charge locations
+    plt.fill_between([20, 40], [60, 60], [80, 80], alpha=0.3, color='red', label='Positive Charge')
+    plt.fill_between([60, 80], [20, 20], [40, 40], alpha=0.3, color='blue', label='Negative Charge')
     
-    # 添加标签和标题
+    # Add labels and title
     plt.xlabel('x (grid points)', fontsize=12)
     plt.ylabel('y (grid points)', fontsize=12)
-    plt.title('Electric Potential Distribution\nPoisson Equation Solution', fontsize=14)
+    plt.title('Electric Potential Distribution\nPoisson Equation with Positive and Negative Charges', fontsize=14)
     plt.legend()
+    
+    # Add grid
     plt.grid(True, alpha=0.3)
+    
     plt.tight_layout()
     plt.show()
 
 def analyze_solution(phi: np.ndarray, iterations: int, converged: bool) -> None:
     """
-    分析解的统计信息
+    Analyze and print solution statistics.
     
-    参数:
-        phi (np.ndarray): 电势分布数组
-        iterations (int): 迭代次数
-        converged (bool): 收敛状态
-    
-    实现说明:
-        1. 严格按参考答案格式输出
+    Args:
+        phi (np.ndarray): Electric potential array
+        iterations (int): Number of iterations
+        converged (bool): Convergence status
     """
-    print("\nSolution Analysis:")
+    print(f"Solution Analysis:")
     print(f"  Iterations: {iterations}")
     print(f"  Converged: {converged}")
     print(f"  Max potential: {np.max(phi):.6f} V")
     print(f"  Min potential: {np.min(phi):.6f} V")
-    print(f"  Potential range: {np.max(phi)-np.min(phi):.6f} V")
+    print(f"  Potential range: {np.max(phi) - np.min(phi):.6f} V")
     
-    # 找到极值位置
+    # Find locations of extrema
     max_idx = np.unravel_index(np.argmax(phi), phi.shape)
     min_idx = np.unravel_index(np.argmin(phi), phi.shape)
     print(f"  Max potential location: ({max_idx[0]}, {max_idx[1]})")
     print(f"  Min potential location: ({min_idx[0]}, {min_idx[1]})")
 
 if __name__ == "__main__":
-    # 测试代码区域
+    # Solve the Poisson equation
     print("Solving 2D Poisson equation with relaxation method...")
     
-    # 参数设置
+    # Parameters
     M = 100
     target = 1e-6
     max_iter = 10000
     
-    # 求解泊松方程
+    # Solve
     phi, iterations, converged = solve_poisson_equation(M, target, max_iter)
     
-    # 分析结果
+    # Analyze results
     analyze_solution(phi, iterations, converged)
     
-    # 可视化结果
+    # Visualize
     visualize_solution(phi, M)
     
-    # 附加分析：中心线电势分布
+    # Additional analysis: potential along center lines
     plt.figure(figsize=(12, 5))
     
-    # 水平中心线
+    # Horizontal cross-section
     plt.subplot(1, 2, 1)
     center_y = M // 2
     plt.plot(phi[center_y, :], 'b-', linewidth=2)
@@ -171,7 +150,7 @@ if __name__ == "__main__":
     plt.title(f'Potential along y = {center_y}')
     plt.grid(True, alpha=0.3)
     
-    # 垂直中心线
+    # Vertical cross-section
     plt.subplot(1, 2, 2)
     center_x = M // 2
     plt.plot(phi[:, center_x], 'r-', linewidth=2)
