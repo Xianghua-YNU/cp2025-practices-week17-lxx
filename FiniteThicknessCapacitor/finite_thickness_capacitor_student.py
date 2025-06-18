@@ -1,59 +1,75 @@
 #!/usr/bin/env python3
 """
-Module: Finite Thickness Parallel Plate Capacitor with 3D Visualization
+
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import cm
 from scipy.ndimage import laplace
 
-def solve_laplace_sor(nx, ny, plate_thickness, plate_separation, omega=1.85, max_iter=10000, tolerance=1e-6):
-    """Solve 2D Laplace equation using SOR method"""
+def solve_laplace_sor(nx, ny, plate_thickness, plate_separation, omega=1.8, max_iter=10000, tolerance=1e-6):
+    """
+    Solve 2D Laplace equation using SOR method for finite thickness parallel plate capacitor.
+    
+    Args:
+        nx (int): Number of grid points in x direction
+        ny (int): Number of grid points in y direction
+        plate_thickness (int): Thickness of conductor plates in grid points
+        plate_separation (int): Separation between plates in grid points
+        omega (float): Relaxation factor (1.0 < omega < 2.0)
+        max_iter (int): Maximum number of iterations
+        tolerance (float): Convergence tolerance
+        
+    Returns:
+        np.ndarray: 2D electric potential distribution
+    """
     # Initialize potential grid
-    U = np.zeros((ny, nx))
+    potential = np.zeros((ny, nx))
+    convergence_history = []
     
-    # Calculate plate positions (centered vertically)
-    y_center = ny // 2
-    upper_start = y_center + plate_separation // 2
-    upper_end = upper_start + plate_thickness
-    lower_end = y_center - plate_separation // 2
-    lower_start = lower_end - plate_thickness
+    # Set boundary conditions
+    potential[:, 0] = 0.0    # Left boundary
+    potential[:, -1] = 0.0   # Right boundary
+    potential[0, :] = 0.0    # Top boundary
+    potential[-1, :] = 0.0   # Bottom boundary
     
-    # Set conductor potentials
-    U[upper_start:upper_end, :] = 100.0  # Upper plate
-    U[lower_start:lower_end, :] = -100.0  # Lower plate
+    # Calculate plate positions (centered)
+    y_mid = ny // 2
+    upper_start = y_mid - plate_separation//2 - plate_thickness
+    upper_end = y_mid - plate_separation//2
+    lower_start = y_mid + plate_separation//2
+    lower_end = y_mid + plate_separation//2 + plate_thickness
     
-    # Boundary conditions
-    U[:, 0] = 0.0    # Left boundary
-    U[:, -1] = 0.0   # Right boundary
-    U[0, :] = 0.0    # Top boundary
-    U[-1, :] = 0.0   # Bottom boundary
+    # Set plate potentials
+    potential[upper_start:upper_end, :] = 100.0   # Upper plate
+    potential[lower_start:lower_end, :] = -100.0  # Lower plate
     
     # SOR iteration
-    for _ in range(max_iter):
-        max_error = 0.0
+    for iteration in range(max_iter):
+        max_diff = 0.0
         for i in range(1, ny-1):
             for j in range(1, nx-1):
                 # Skip conductor regions
                 if (upper_start <= i < upper_end) or (lower_start <= i < lower_end):
                     continue
-                
-                old_val = U[i, j]
+                    
+                old_val = potential[i, j]
                 new_val = (1-omega)*old_val + omega*0.25*(
-                    U[i+1,j] + U[i-1,j] + U[i,j+1] + U[i,j-1]
+                    potential[i+1,j] + potential[i-1,j] + 
+                    potential[i,j+1] + potential[i,j-1]
                 )
-                U[i,j] = new_val
-                max_error = max(max_error, abs(new_val - old_val))
+                potential[i,j] = new_val
+                max_diff = max(max_diff, abs(new_val - old_val))
         
-        if max_error < tolerance:
+        convergence_history.append(max_diff)
+        if max_diff < tolerance:
             break
     
-    return U
+    return potential
 
 def calculate_charge_density(potential_grid, dx, dy):
     """
-    Calculate charge density using finite difference Laplacian.
+    Calculate charge density using Poisson equation.
     
     Args:
         potential_grid (np.ndarray): 2D electric potential distribution
@@ -63,16 +79,16 @@ def calculate_charge_density(potential_grid, dx, dy):
     Returns:
         np.ndarray: 2D charge density distribution
     """
-    # Initialize laplacian array
+    # Calculate Laplacian using finite differences
     laplacian = np.zeros_like(potential_grid)
     
-    # Central difference approximation (excluding boundaries)
+    # Central difference approximation
     laplacian[1:-1,1:-1] = (
         (potential_grid[1:-1,2:] - 2*potential_grid[1:-1,1:-1] + potential_grid[1:-1,:-2])/dx**2 +
         (potential_grid[2:,1:-1] - 2*potential_grid[1:-1,1:-1] + potential_grid[:-2,1:-1])/dy**2
     )
     
-    # Calculate charge density from Poisson equation
+    # Calculate charge density
     charge_density = -laplacian / (4 * np.pi)
     
     # Set conductor interior charge density to zero
@@ -80,61 +96,48 @@ def calculate_charge_density(potential_grid, dx, dy):
     
     return charge_density
 
-def plot_3d_results(potential, charge_density, x_coords, y_coords):
+def plot_results(potential, charge_density, x_coords, y_coords):
     """
-    Create advanced 3D visualizations with multiple viewing angles.
+    Create visualization of potential and charge density distributions.
+    
+    Args:
+        potential (np.ndarray): 2D electric potential distribution
+        charge_density (np.ndarray): Charge density distribution
+        x_coords (np.ndarray): X coordinate array
+        y_coords (np.ndarray): Y coordinate array
     """
-    fig = plt.figure(figsize=(18, 8))
-    X, Y = np.meshgrid(x_coords, y_coords)
+    plt.figure(figsize=(12, 5))
     
-    # ================
-    # 3D Potential Plot
-    # ================
-    ax1 = fig.add_subplot(121, projection='3d')
-    surf = ax1.plot_surface(X, Y, potential, cmap='viridis',
-                          rstride=2, cstride=2, alpha=0.8,
-                          linewidth=0, antialiased=True)
-    ax1.contour(X, Y, potential, zdir='z', offset=potential.min(), 
-               cmap='viridis', linestyles="solid")
-    ax1.set_xlabel('X Position (m)')
-    ax1.set_ylabel('Y Position (m)')
-    ax1.set_zlabel('Electric Potential (V)')
-    ax1.set_title('3D Potential Distribution', pad=20)
-    fig.colorbar(surf, ax=ax1, shrink=0.5, aspect=10, label='Potential (V)')
-    ax1.view_init(elev=30, azim=45)
+    # Plot potential distribution
+    plt.subplot(1, 2, 1)
+    contour = plt.contourf(x_coords, y_coords, potential, levels=20, cmap='viridis')
+    plt.colorbar(contour, label='Electric Potential (V)')
+    plt.xlabel('x (m)')
+    plt.ylabel('y (m)')
+    plt.title('Electric Potential Distribution')
     
-    # =====================
-    # 3D Charge Density Plot
-    # =====================
-    ax2 = fig.add_subplot(122, projection='3d')
-    surf2 = ax2.plot_surface(X, Y, charge_density, cmap='RdBu_r',
-                           rstride=2, cstride=2, alpha=0.8,
-                           linewidth=0.5, antialiased=True)
-    levels = np.linspace(charge_density.min(), charge_density.max(), 15)
-    ax2.contour(X, Y, charge_density, levels=levels, 
-               zdir='z', offset=charge_density.min(), 
-               colors='k', linewidths=0.5)
-    ax2.set_xlabel('X Position (m)')
-    ax2.set_ylabel('Y Position (m)')
-    ax2.set_zlabel('Charge Density (C/m²)')
-    ax2.set_title('3D Charge Density Distribution', pad=20)
-    fig.colorbar(surf2, ax=ax2, shrink=0.5, aspect=10, label='Charge Density (C/m²)')
-    ax2.view_init(elev=25, azim=-45)
+    # Plot charge density distribution
+    plt.subplot(1, 2, 2)
+    charge_contour = plt.contourf(x_coords, y_coords, charge_density, levels=20, cmap='RdBu_r')
+    plt.colorbar(charge_contour, label='Charge Density (C/m$^2$)')
+    plt.xlabel('x (m)')
+    plt.ylabel('y (m)')
+    plt.title('Charge Density Distribution')
     
     plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
-    # Simulation parameters
-    nx, ny = 120, 100
-    plate_thickness = 8
-    plate_separation = 40
-    omega = 1.88
+    # Test-compatible parameters
+    nx, ny = 40, 30
+    plate_thickness = 2
+    plate_separation = 8
+    omega = 1.8
     
-    # Solve Laplace equation
+    # Solve for potential
     potential = solve_laplace_sor(nx, ny, plate_thickness, plate_separation, omega)
     
-    # Create coordinate system
+    # Create coordinate arrays
     x_coords = np.linspace(0, 1, nx)
     y_coords = np.linspace(0, 1, ny)
     dx = x_coords[1] - x_coords[0]
@@ -143,5 +146,5 @@ if __name__ == "__main__":
     # Calculate charge density
     charge_density = calculate_charge_density(potential, dx, dy)
     
-    # Generate 3D visualizations
-    plot_3d_results(potential, charge_density, x_coords, y_coords)
+    # Plot results
+    plot_results(potential, charge_density, x_coords, y_coords)
